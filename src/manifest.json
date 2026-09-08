@@ -20,14 +20,14 @@
       ]
     }
   ],
-  "description": "Interactive LaTeX editing in Overleaf, using a custom build of MathQuill",
+  "description": "Forking OverQuill so it suits me better :)",
   "icons": {
     "16": "icon16.png",
     "48": "icon48.png",
     "128": "icon128.png"
   },
   "manifest_version": 3,
-  "name": "OverQuill",
+  "name": "OverQuill Fork",
   "options_page": "options.html",
   "permissions": [
     "storage"
