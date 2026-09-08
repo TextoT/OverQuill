@@ -165,7 +165,7 @@ function setupMathQuill() {
       view.focus()
       return false;
     }
-    if(event.metaKey) {
+    if(event.metaKey || event.ctrlKey) {
       if(event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation();
