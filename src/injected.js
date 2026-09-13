@@ -62,6 +62,7 @@ function setResultHighlighted(index) {
 let editorShown = false;
 let editorDiv;
 let editorInstance;
+let editorSelection = null;
 function setupMathQuill() {
 
   editorDiv = document.createElement('div');
@@ -158,8 +159,15 @@ function setupMathQuill() {
     if(isReturn || isEscape) {
       event.preventDefault();
       event.stopPropagation();
-      isReturn && view.dispatch(view.state.replaceSelection(editorInstance.latex()));
+      if(isReturn) {
+        const latex = editorInstance.latex();
+        view.dispatch({
+          changes: {from: editorSelection.from, to: editorSelection.to, insert: latex},
+          selection: {anchor: editorSelection.from + latex.length}
+        });
+      }
       editorInstance.latex("");
+      editorSelection = null;
       editorShown = false;
       editorDiv.style.display = "none";
       view.focus()
@@ -216,12 +224,18 @@ function setupMathQuill() {
 }
 
 function loadShortcuts(shortcuts){
-  bindFunction(shortcuts.openEditor, function() {
+  const openEditor = function() {
+    if(!editorShown) {
+      editorSelection = view.state.selection.main;
+      editorInstance.latex(view.state.sliceDoc(editorSelection.from, editorSelection.to));
+    }
     editorShown = editorShown === false;
     editorDiv.style.display = editorShown ? "" : "none";
     editorInstance.focus();
     return true;
-  })
+  };
+  bindFunction("ctrl-t", openEditor);
+  if(shortcuts.openEditor.toLowerCase() !== "ctrl-t") bindFunction(shortcuts.openEditor, openEditor);
 }
 
 
