@@ -17,7 +17,7 @@
 [![](https://img.shields.io/github/license/FlamedDogo99/OverQuill?style=flat-square)](https://github.com/FlamedDogo99/OverQuill/blob/master/LICENSE)
 
 ## Keyboard Shortcuts
-<b>Open Editor:</b> <kbd>Ctrl + t</kbd> - Open the in-editor MathQuill editor; highlighted LaTeX is loaded for editing
+<b>Open Editor:</b> <kbd>Alt + t</kbd> - Open the in-editor MathQuill editor; highlighted LaTeX is loaded for editing
  - Must be editing inside the Overleaf code editor 
  - Shortcut can be configured in the extension's options menu
 

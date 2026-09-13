@@ -234,8 +234,7 @@ function loadShortcuts(shortcuts){
     editorInstance.focus();
     return true;
   };
-  bindFunction("ctrl-t", openEditor);
-  if(shortcuts.openEditor.toLowerCase() !== "ctrl-t") bindFunction(shortcuts.openEditor, openEditor);
+  bindFunction(shortcuts.openEditor, openEditor);
 }
 
 
