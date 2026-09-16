@@ -16,17 +16,22 @@ HTMLElement.prototype.htmlContent = function(html) {
 // Get the bindings for the codemirror API
 let getCodeMirror = new Promise(
   (resolve) => {
+    const fallback = setTimeout(() => resolve(false), 1000);
     window.addEventListener( 'UNSTABLE_editor:extensions',
       (event)=>{
+        clearTimeout(fallback);
         codeMirror = event.detail.CodeMirror;
         keymap = codeMirror.keymap;
-        resolve();
+        resolve(true);
       }, {once: true});
   });
 
 function getView(){
   return new Promise( async (resolve)=>{
-    await getCodeMirror;
+    if(!await getCodeMirror) {
+      resolve(false);
+      return;
+    }
     view = codeMirror.EditorView.findFromDOM(document);
     let configInterval = setInterval(function(){
       if( view.state.config.base.length > 0 ) {
@@ -65,6 +70,43 @@ let editorInstance;
 let editorSelection = null;
 let editorSelectionPrefix = "";
 let editorSelectionSuffix = "";
+let standaloneSelection = null;
+let standaloneShortcutListenerAdded = false;
+
+function getStandaloneSelection() {
+  const activeElement = document.activeElement;
+  if(activeElement && typeof activeElement.selectionStart === "number") {
+    return {
+      element: activeElement,
+      from: activeElement.selectionStart,
+      to: activeElement.selectionEnd,
+      text: activeElement.value.slice(activeElement.selectionStart, activeElement.selectionEnd)
+    };
+  }
+
+  const selection = window.getSelection();
+  if(selection && selection.rangeCount > 0) {
+    return {range: selection.getRangeAt(0).cloneRange(), text: selection.toString()};
+  }
+  return {text: ""};
+}
+
+function replaceStandaloneSelection(latex) {
+  if(standaloneSelection?.element) {
+    const element = standaloneSelection.element;
+    element.focus();
+    element.setRangeText(latex, standaloneSelection.from, standaloneSelection.to, "end");
+    element.dispatchEvent(new Event("input", {bubbles: true}));
+    return;
+  }
+
+  if(standaloneSelection?.range) {
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(standaloneSelection.range);
+    if(document.execCommand) document.execCommand("insertText", false, latex);
+  }
+}
 
 function splitMathDelimiters(latex) {
   const delimiters = [
@@ -232,10 +274,14 @@ function setupMathQuill() {
       event.stopPropagation();
       if(isReturn) {
         const latex = editorSelectionPrefix + editorInstance.latex() + editorSelectionSuffix;
-        view.dispatch({
-          changes: {from: editorSelection.from, to: editorSelection.to, insert: latex},
-          selection: {anchor: editorSelection.from + latex.length}
-        });
+        if(view) {
+          view.dispatch({
+            changes: {from: editorSelection.from, to: editorSelection.to, insert: latex},
+            selection: {anchor: editorSelection.from + latex.length}
+          });
+        } else {
+          replaceStandaloneSelection(latex);
+        }
       }
       editorInstance.latex("");
       editorSelection = null;
@@ -243,7 +289,7 @@ function setupMathQuill() {
       editorSelectionSuffix = "";
       editorShown = false;
       editorDiv.style.display = "none";
-      view.focus()
+      if(view) view.focus();
       return false;
     }
     if(event.metaKey || event.ctrlKey) {
@@ -300,12 +346,18 @@ function loadShortcuts(shortcuts){
   const openEditor = function() {
     if(focusPopupEditor()) return true;
     if(!editorShown) {
-      const currentSelection = view.state.selection.main;
-      const containingMath = currentSelection.from !== currentSelection.to
-        ? findContainingMath(view.state, currentSelection)
-        : null;
-      editorSelection = containingMath || currentSelection;
-      const selectedLatex = splitMathDelimiters(view.state.sliceDoc(editorSelection.from, editorSelection.to));
+      let selectedLatex;
+      if(view) {
+        const currentSelection = view.state.selection.main;
+        const containingMath = currentSelection.from !== currentSelection.to
+          ? findContainingMath(view.state, currentSelection)
+          : null;
+        editorSelection = containingMath || currentSelection;
+        selectedLatex = splitMathDelimiters(view.state.sliceDoc(editorSelection.from, editorSelection.to));
+      } else {
+        standaloneSelection = getStandaloneSelection();
+        selectedLatex = splitMathDelimiters(standaloneSelection.text);
+      }
       editorSelectionPrefix = selectedLatex.prefix;
       editorSelectionSuffix = selectedLatex.suffix;
       editorInstance.latex(selectedLatex.content);
@@ -315,11 +367,38 @@ function loadShortcuts(shortcuts){
     editorInstance.focus();
     return true;
   };
-  bindFunction(shortcuts.openEditor, openEditor);
+  if(view) {
+    bindFunction(shortcuts.openEditor, openEditor);
+  } else if(!standaloneShortcutListenerAdded) {
+    standaloneShortcutListenerAdded = true;
+    document.addEventListener("keydown", function(event) {
+      const shortcut = shortcuts[0]?.key.toLowerCase().split("-") || [];
+      const key = shortcut.pop();
+      const modifier = (name, pressed) => shortcut.includes(name) === pressed;
+      const usesMod = shortcut.includes("mod");
+      if(event.key.toLowerCase() === key &&
+        modifier("alt", event.altKey) &&
+        modifier("shift", event.shiftKey) &&
+        modifier("ctrl", usesMod ? false : event.ctrlKey) &&
+        modifier("cmd", usesMod ? false : event.metaKey) &&
+        (!usesMod || event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        shortcuts[0].run();
+      }
+    });
+  }
 }
 
-
-getCodeMirror.then( ()=>{
+getCodeMirror.then( (hasCodeMirror)=>{
+  if(!hasCodeMirror) {
+    setupMathQuill();
+    document.addEventListener('overquill_config_send', (e)=> {
+      shortcuts = [];
+      loadShortcuts(e.detail.overquill_config.shortcuts);
+    });
+    document.dispatchEvent(new CustomEvent('overquill_config_listen'));
+    return;
+  }
   let kbCompartmentLoad = getView().then(()=> {
       let oldCompartment = view.state.config.compartments.keys().next();
       kbCompartment = oldCompartment.value.of(keymap.of([]));

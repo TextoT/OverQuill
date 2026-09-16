@@ -22,7 +22,7 @@ function injectIntoMain() {
   const injectScript = document.createElement("script");
   injectScript.type = "module";
   injectScript.src = chrome.runtime.getURL("injected.js");
-  document.body.appendChild(injectScript);
+  (document.body || document.documentElement).appendChild(injectScript);
 
   // Load MathQuill Fonts
   const fontPath = chrome.runtime.getURL("deps/mathquill/fonts/");

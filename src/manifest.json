@@ -16,7 +16,7 @@
         "deps/mathquill/mathquill.css"
       ],
       "matches": [
-        "https://*.overleaf.com/project/*"
+        "<all_urls>"
       ]
     }
   ],
