@@ -63,6 +63,77 @@ let editorShown = false;
 let editorDiv;
 let editorInstance;
 let editorSelection = null;
+let editorSelectionPrefix = "";
+let editorSelectionSuffix = "";
+
+function splitMathDelimiters(latex) {
+  const delimiters = [
+    ["$", "$"],
+    ["\\(", "\\)"],
+    ["\\[", "\\]"]
+  ];
+  for(const [prefix, suffix] of delimiters) {
+    if(latex.startsWith(prefix) && latex.endsWith(suffix) && latex.length >= prefix.length + suffix.length) {
+      return {
+        content: latex.slice(prefix.length, latex.length - suffix.length),
+        prefix,
+        suffix
+      };
+    }
+  }
+  return {content: latex, prefix: "", suffix: ""};
+}
+
+function findContainingMath(viewState, selection) {
+  const documentText = viewState.doc.toString();
+  const delimiterPairs = [
+    ["\\[", "\\]"],
+    ["\\(", "\\)"],
+    ["$", "$"]
+  ];
+
+  for(const [prefix, suffix] of delimiterPairs) {
+    const prefixStart = documentText.lastIndexOf(prefix, selection.from);
+    const suffixStart = documentText.indexOf(suffix, selection.to);
+    if(prefixStart === -1 || suffixStart === -1 || prefixStart >= suffixStart) continue;
+    if(prefix === "$" && documentText[prefixStart - 1] === "\\") continue;
+    return {
+      from: prefixStart,
+      to: suffixStart + suffix.length,
+      latex: documentText.slice(prefixStart, suffixStart + suffix.length)
+    };
+  }
+  return null;
+}
+
+function isVisible(element) {
+  return element && element.getClientRects().length > 0 && getComputedStyle(element).visibility !== "hidden";
+}
+
+function focusPopupEditor() {
+  const activeElement = document.activeElement;
+  const activePopup = activeElement?.closest("[role='dialog'], .modal, .popup, .popover");
+  if(activeElement && (activeElement.closest(".mq-editable-field") || (activePopup && activeElement.matches("textarea, input, [contenteditable='true']")))) {
+    activeElement.focus();
+    return true;
+  }
+
+  const popup = document.querySelector("[role='dialog'], .modal, .popup, .popover");
+  if(!isVisible(popup)) return false;
+  const mathField = popup.querySelector(".mq-editable-field");
+  if(mathField) {
+    const mathFieldApi = MathQuill.getInterface(3).MathField(mathField);
+    mathFieldApi.focus();
+    return true;
+  }
+  const editor = popup.querySelector("textarea, input, [contenteditable='true']");
+  if(editor) {
+    editor.focus();
+    return true;
+  }
+  return false;
+}
+
 function setupMathQuill() {
 
   editorDiv = document.createElement('div');
@@ -160,7 +231,7 @@ function setupMathQuill() {
       event.preventDefault();
       event.stopPropagation();
       if(isReturn) {
-        const latex = editorInstance.latex();
+        const latex = editorSelectionPrefix + editorInstance.latex() + editorSelectionSuffix;
         view.dispatch({
           changes: {from: editorSelection.from, to: editorSelection.to, insert: latex},
           selection: {anchor: editorSelection.from + latex.length}
@@ -168,18 +239,20 @@ function setupMathQuill() {
       }
       editorInstance.latex("");
       editorSelection = null;
+      editorSelectionPrefix = "";
+      editorSelectionSuffix = "";
       editorShown = false;
       editorDiv.style.display = "none";
       view.focus()
       return false;
     }
     if(event.metaKey || event.ctrlKey) {
-      if(event.key === "ArrowUp") {
+      if(event.key === "ArrowDown") {
         event.preventDefault();
         event.stopPropagation();
         editorInstance.matrixCmd("addRow", -1);
         return false;
-      } else if (event.key === "ArrowDown") {
+      } else if (event.key === "ArrowUp") {
         event.preventDefault();
         event.stopPropagation()
         editorInstance.matrixCmd('deleteRow');
@@ -225,9 +298,17 @@ function setupMathQuill() {
 
 function loadShortcuts(shortcuts){
   const openEditor = function() {
+    if(focusPopupEditor()) return true;
     if(!editorShown) {
-      editorSelection = view.state.selection.main;
-      editorInstance.latex(view.state.sliceDoc(editorSelection.from, editorSelection.to));
+      const currentSelection = view.state.selection.main;
+      const containingMath = currentSelection.from !== currentSelection.to
+        ? findContainingMath(view.state, currentSelection)
+        : null;
+      editorSelection = containingMath || currentSelection;
+      const selectedLatex = splitMathDelimiters(view.state.sliceDoc(editorSelection.from, editorSelection.to));
+      editorSelectionPrefix = selectedLatex.prefix;
+      editorSelectionSuffix = selectedLatex.suffix;
+      editorInstance.latex(selectedLatex.content);
     }
     editorShown = editorShown === false;
     editorDiv.style.display = editorShown ? "" : "none";
