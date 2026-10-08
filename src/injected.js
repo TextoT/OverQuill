@@ -126,6 +126,43 @@ function splitMathDelimiters(latex) {
   return {content: latex, prefix: "", suffix: ""};
 }
 
+function removeEmptyIntegralBounds(latex) {
+  const integralPattern = /\\int(?![a-zA-Z])/g;
+  let result = "";
+  let cursor = 0;
+  let integral;
+
+  while((integral = integralPattern.exec(latex)) !== null) {
+    result += latex.slice(cursor, integral.index) + integral[0];
+    let boundCursor = integralPattern.lastIndex;
+
+    while(latex[boundCursor] === "_" || latex[boundCursor] === "^") {
+      const openBrace = boundCursor + 1;
+      if(latex[openBrace] !== "{") break;
+
+      let depth = 1;
+      let end = openBrace + 1;
+      while(end < latex.length && depth > 0) {
+        if(latex[end] === "{") depth++;
+        if(latex[end] === "}") depth--;
+        end++;
+      }
+      if(depth > 0) break;
+
+      const content = latex.slice(openBrace + 1, end - 1);
+      if(!/^(?:\s|\\ )*$/.test(content)) {
+        result += latex.slice(boundCursor, end);
+      }
+      boundCursor = end;
+    }
+
+    cursor = boundCursor;
+    integralPattern.lastIndex = boundCursor;
+  }
+
+  return result + latex.slice(cursor);
+}
+
 function findContainingMath(viewState, selection) {
   const documentText = viewState.doc.toString();
   const delimiterPairs = [
@@ -273,7 +310,9 @@ function setupMathQuill() {
       event.preventDefault();
       event.stopPropagation();
       if(isReturn) {
-        const latex = editorSelectionPrefix + editorInstance.latex() + editorSelectionSuffix;
+        const latex = editorSelectionPrefix
+          + removeEmptyIntegralBounds(editorInstance.latex())
+          + editorSelectionSuffix;
         if(view) {
           view.dispatch({
             changes: {from: editorSelection.from, to: editorSelection.to, insert: latex},
